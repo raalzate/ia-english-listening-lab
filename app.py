@@ -27,7 +27,14 @@ class EnglishLearningApp:
             }],
             'postprocessor_args': ['-af', f'atempo={velocidad}'],
             'outtmpl': f'{output_name}.%(ext)s',
-            'quiet': True
+            'quiet': True,
+            'nocheckcertificate': True,
+            'ignoreerrors': False,
+            'logtostderr': False,
+            'quiet': True,
+            'no_warnings': True,
+            'default_search': 'auto',
+            'source_address': '0.0.0.0', # Fuerza el uso de IPv4
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
