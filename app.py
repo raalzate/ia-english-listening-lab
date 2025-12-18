@@ -4,6 +4,7 @@ import os
 import json
 import time
 import base64
+import re
 from faster_whisper import WhisperModel
 
 # Configuración de página
@@ -12,37 +13,55 @@ st.set_page_config(page_title="English Learning Hub", page_icon="🇺🇸", layo
 class EnglishLearningApp:
     def __init__(self, model_size="base", device="cpu", compute_type="int8"):
         if 'whisper_model' not in st.session_state:
-            with st.spinner("Preparando laboratorio de idiomas..."):
+            with st.spinner("Preparando laboratorio de idiomas (IA Whisper)..."):
+                # Optimizamos para CPU de Streamlit Cloud
                 st.session_state.whisper_model = WhisperModel(model_size, device=device, compute_type=compute_type)
         self.model = st.session_state.whisper_model
 
+    def corregir_url(self, url):
+        """Convierte URLs de YouTube a instancias de Invidious para saltar bloqueos."""
+        video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
+        if video_id_match:
+            video_id = video_id_match.group(1)
+            # Usamos yewtu.be como proxy para evitar el error 403 Forbidden
+            return f"https://yewtu.be/watch?v={video_id}"
+        return url
+
     def descargar_audio(self, url, velocidad=0.85):
+        url_final = self.corregir_url(url)
         output_name = f"audio_{int(time.time())}"
+        
         ydl_opts = {
+            # 'ba' busca el mejor audio disponible que no requiera descifrado complejo
             'format': 'bestaudio/best',
-            'cookiefile': 'cookies.txt',
+            'cookiefile': 'cookies.txt' if os.path.exists('cookies.txt') else None,
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
-                'preferredquality': '192',
+                'preferredquality': '128',
             }],
             'postprocessor_args': ['-af', f'atempo={velocidad}'],
             'outtmpl': f'{output_name}.%(ext)s',
-            'nocheckcertificate': True, # Ignora problemas de certificados en la nube
-            'geo_bypass': True,         # Intenta saltar restricciones geográficas
-            'quiet': True
+            'nocheckcertificate': True,
+            'ignoreerrors': True,
+            'quiet': True,
+            'no_warnings': True,
         }
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        return f"{output_name}.mp3"
+            ydl.download([url_final])
+        
+        # Verificamos si el archivo se creó realmente
+        filename = f"{output_name}.mp3"
+        if not os.path.exists(filename):
+            raise Exception("No se pudo descargar el audio. YouTube bloqueó la petición incluso vía proxy.")
+            
+        return filename
 
     def transcribir_aprendizaje(self, audio_path):
-        # Transcribimos y traducimos internamente si es necesario
         segments, _ = self.model.transcribe(audio_path, language="en", word_timestamps=True)
-        
         full_data = []
         full_text = ""
-        
         for segment in segments:
             full_text += segment.text + " "
             for word in segment.words:
@@ -61,14 +80,12 @@ class EnglishLearningApp:
         words_json = json.dumps(word_data)
 
         html_code = f"""
-        <div style="background: #1e1e1e; padding: 25px; border-radius: 20px; border: 1px solid #383838; font-family: 'Inter', sans-serif;">
+        <div style="background: #1e1e1e; padding: 25px; border-radius: 20px; border: 1px solid #383838; font-family: sans-serif; color: white;">
             <audio id="player" controls src="{audio_html}" style="width: 100%; margin-bottom: 25px;"></audio>
-            
-            <div id="transcript-box" style="background: #000; padding: 30px; border-radius: 15px; height: 350px; overflow-y: auto; line-height: 2; font-size: 1.5rem; color: #888; border: 1px solid #333;">
+            <div id="transcript-box" style="background: #000; padding: 30px; border-radius: 15px; height: 350px; overflow-y: auto; line-height: 2; font-size: 1.5rem; color: #666; border: 1px solid #333; scroll-behavior: smooth;">
                 <div id="content"></div>
             </div>
-            
-            <p style="color: #666; font-size: 0.9rem; margin-top: 15px;">💡 Tip: Haz clic en cualquier palabra para repetir la pronunciación.</p>
+            <p style="color: #666; font-size: 0.9rem; margin-top: 15px;">💡 Haz clic en una palabra para saltar a ese momento.</p>
         </div>
 
         <script>
@@ -94,15 +111,12 @@ class EnglishLearningApp:
                     if (now >= item.s && now <= item.e) {{
                         item.el.style.color = '#00f2fe';
                         item.el.style.transform = 'scale(1.2)';
-                        item.el.style.textShadow = '0 0 10px #00f2fe66';
                         item.el.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
                     }} else if (now > item.e) {{
                         item.el.style.color = '#fff';
                         item.el.style.transform = 'scale(1)';
-                        item.el.style.textShadow = 'none';
                     }} else {{
                         item.el.style.color = '#444';
-                        item.el.style.transform = 'scale(1)';
                     }}
                 }});
             }};
@@ -112,38 +126,43 @@ class EnglishLearningApp:
 
 # --- INTERFAZ ---
 st.title("🇺🇸 English Listening Lab")
-st.subheader("Mejora tu comprensión auditiva con IA")
+st.subheader("Practica tu oido con transcripción sincronizada")
 
 col1, col2 = st.columns([1, 3])
 
 with col1:
-    st.markdown("### ⚙️ Ajustes")
-    url = st.text_input("Video de YouTube (English):")
-    speed = st.select_slider("Velocidad de estudio:", options=[0.5, 0.75, 0.85, 1.0], value=0.85)
-    st.info("Recomendamos 0.85 para captar mejor los fonemas.")
+    st.markdown("### ⚙️ Configuración")
+    url = st.text_input("YouTube URL:")
+    speed = st.select_slider("Velocidad:", options=[0.5, 0.75, 0.85, 1.0], value=0.85)
+    st.info("Nota: Se usará un proxy automático para evitar bloqueos de YouTube.")
 
 with col2:
     if st.button("Comenzar Lección 🚀", use_container_width=True):
         if url:
             app = EnglishLearningApp()
-            
-            with st.status("Preparando material didáctico...", expanded=True) as s:
-                st.write("📥 Descargando audio original...")
-                audio = app.descargar_audio(url, speed)
-                st.write("✍️ Generando transcripción fonética...")
-                data, raw_text = app.transcribir_aprendizaje(audio)
-                s.update(label="¡Clase lista!", state="complete")
-            
-            # Layout de estudio
-            tab1, tab2 = st.tabs(["🎧 Reproductor Interactivo", "📖 Vocabulario Completo"])
-            
-            with tab1:
-                app.render_learning_ui(audio, data)
-            
-            with tab2:
-                st.markdown("### Texto completo para estudio")
-                st.write(raw_text)
-                st.download_button("Descargar Transcripción", raw_text, file_name="lesson.txt")
-        else:
-            st.warning("Introduce una URL para empezar.")
+            try:
+                with st.status("Procesando material...", expanded=True) as s:
+                    st.write("📥 Descargando audio (vía Proxy)...")
+                    audio_file = app.descargar_audio(url, speed)
+                    
+                    st.write("🧠 Transcribiendo con IA...")
+                    word_data, raw_text = app.transcribir_aprendizaje(audio_file)
+                    
+                    s.update(label="¡Listo!", state="complete")
+                
+                tab1, tab2 = st.tabs(["🎧 Estudio Interactivo", "📖 Texto Plano"])
+                
+                with tab1:
+                    app.render_learning_ui(audio_file, word_data)
+                
+                with tab2:
+                    st.write(raw_text)
+                
+                # Borramos archivo temporal para no llenar el servidor
+                if os.path.exists(audio_file):
+                    os.remove(audio_file)
 
+            except Exception as e:
+                st.error(f"Error crítico: {e}")
+        else:
+            st.warning("Por favor, introduce una URL.")
