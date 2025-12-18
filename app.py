@@ -20,7 +20,7 @@ class EnglishLearningApp:
         output_name = f"audio_{int(time.time())}"
         ydl_opts = {
             'format': 'bestaudio/best',
-            'cookiefile': 'cookies.txt',  # Indica a yt-dlp que use tus credenciales
+            'cookiefile': 'cookies.txt',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
@@ -28,6 +28,9 @@ class EnglishLearningApp:
             }],
             'postprocessor_args': ['-af', f'atempo={velocidad}'],
             'outtmpl': f'{output_name}.%(ext)s',
+            'nocheckcertificate': True, # Ignora problemas de certificados en la nube
+            'geo_bypass': True,         # Intenta saltar restricciones geográficas
+            'quiet': True
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
