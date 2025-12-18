@@ -1,3 +1,6 @@
 streamlit
 yt-dlp
 faster-whisper
+torch
+torchvision
+torchaudio
