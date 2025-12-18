@@ -20,6 +20,7 @@ class EnglishLearningApp:
         output_name = f"audio_{int(time.time())}"
         ydl_opts = {
             'format': 'bestaudio/best',
+            'cookiefile': 'youtube.com_cookies.txt',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
